@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libgdal-dev gdal-bin libproj-dev
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check imports
+        run: |
+          python -c "
+          import numpy, rasterio, httpx, pyproj, shapely, sklearn, requests
+          print('All imports OK')
+          "
+
+      - name: Smoke test core module
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from aef_core import (
+              AOI, dequantize, wgs84_to_utm_zone, utm_epsg,
+              cosine_similarity_map, cosine_change_map, summarize_embeddings
+          )
+          import numpy as np
+
+          # dequantize
+          raw = np.array([-128, -127, 0, 64, 127], dtype=np.int8)
+          dq = dequantize(raw)
+          assert np.isnan(dq[0]), 'NODATA should be NaN'
+          assert abs(dq[-1] - 0.9922) < 0.01
+
+          # UTM
+          zone = wgs84_to_utm_zone(-76.72, 39.29)
+          assert zone == '18N', f'Expected 18N got {zone}'
+          assert utm_epsg(zone) == 32618
+
+          # cosine ops
+          emb = np.random.randn(10, 10, 64).astype(np.float32)
+          norms = np.linalg.norm(emb, axis=-1, keepdims=True).clip(min=1e-8)
+          emb /= norms
+          ref = emb[5, 5]
+          sim = cosine_similarity_map(emb, ref)
+          assert sim.shape == (10, 10)
+          assert sim[5, 5] > 0.999
+
+          mask = np.ones((10,10), dtype=bool)
+          aoi = AOI(-76.755, 39.240, -76.680, 39.290, 'Test')
+          s = summarize_embeddings(emb, mask, aoi, 2023)
+          assert s['pixel_count_valid'] == 100
+          print('All smoke tests passed ✓')
+          "
