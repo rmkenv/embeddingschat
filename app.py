@@ -303,9 +303,33 @@ with st.sidebar:
             year2 = None
 
     st.markdown('<div class="section-head">Ollama</div>', unsafe_allow_html=True)
-    ollama_host  = st.text_input("Ollama host", value="http://localhost:11434")
+
+    # Load API key from Streamlit secrets if available
+    _secret_key = ""
+    try:
+        _secret_key = st.secrets.get("OLLAMA_API_KEY", "")
+    except Exception:
+        pass
+
+    use_cloud = st.checkbox("Use Ollama Cloud API", value=bool(_secret_key), help="Uncheck to use a local Ollama instance instead")
+
+    if use_cloud:
+        ollama_host = st.text_input("Ollama Cloud host", value="https://api.ollama.ai",
+                                     help="Ollama Cloud base URL")
+        ollama_api_key = st.text_input(
+            "API key",
+            value=_secret_key,
+            type="password",
+            help="Set OLLAMA_API_KEY in Streamlit secrets to avoid entering it here",
+        )
+        st.caption("Uses `/v1/chat/completions` (OpenAI-compatible) with Bearer auth.")
+    else:
+        ollama_host = st.text_input("Local Ollama host", value="http://localhost:11434")
+        ollama_api_key = ""
+        st.caption("Uses `/api/chat` — requires `ollama serve` running locally.")
+
     ollama_model = st.text_input("Model", value="llama3.2",
-                                  help="Must be pulled locally: ollama pull llama3.2")
+                                  help="e.g. llama3.2, llama3.1, mistral, qwen2.5:14b")
     task_label   = st.selectbox("LLM task", list(TASKS.keys()),
                                  index=1 if enable_change else 0)
     task = TASKS[task_label]
@@ -432,6 +456,7 @@ try:
             change_summary=summary_y2,
             model=ollama_model,
             host=ollama_host,
+            api_key=ollama_api_key if ollama_api_key else None,
             task=effective_task,
         )
 
@@ -590,6 +615,7 @@ if not skip_llm and llm_response:
     <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px">
       <span style="font-size:1.1rem">🤖</span>
       <span class="mono" style="color:#64748b">{ollama_model} · {task_label.lower()}</span>
+      <span class="badge {'badge-green' if ollama_api_key else 'badge-blue'}">{'cloud' if ollama_api_key else 'local'}</span>
     </div>
     <div class="llm-box">{llm_response}</div>
     """, unsafe_allow_html=True)

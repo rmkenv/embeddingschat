@@ -386,11 +386,22 @@ def query_ollama(
     summary: dict,
     change_summary: Optional[dict] = None,
     model: str = "llama3.2",
-    host: str = "http://localhost:11434",
+    host: str = "https://api.ollama.ai",
+    api_key: Optional[str] = None,
     task: str = "interpret",
 ) -> str:
     """
-    Send embedding summary to a local Ollama model and return the response text.
+    Send embedding summary to Ollama (Cloud or local) and return the response text.
+
+    Ollama Cloud (default):
+        host    = "https://api.ollama.ai"
+        api_key = "<your Ollama Cloud key>"
+        Uses the OpenAI-compatible /v1/chat/completions endpoint with Bearer auth.
+
+    Local fallback (no api_key):
+        host    = "http://localhost:11434"
+        api_key = None
+        Uses the native /api/chat endpoint.
 
     task options: 'interpret', 'change', 'report'
     """
@@ -417,11 +428,11 @@ Be specific and quantitative where possible. Do not hallucinate specific land ty
 AlphaEarth Foundations embedding extraction summary:
 {json.dumps(summary, indent=2)}
 
-Write a concise technical paragraph (3-5 sentences) suitable for a methods section or monitoring report. 
+Write a concise technical paragraph (3-5 sentences) suitable for a methods section or monitoring report.
 Include: AOI location, year, embedding dimensionality, data coverage, and what the dominant embedding signal pattern suggests about the landscape."""
 
     else:
-        prompt = f"""You are a geospatial AI assistant. Below is a statistical summary of AlphaEarth Foundations 
+        prompt = f"""You are a geospatial AI assistant. Below is a statistical summary of AlphaEarth Foundations
 satellite embeddings (64-dimensional pixel-level vectors, 10m resolution) extracted for a study area.
 
 Embedding summary:
@@ -433,20 +444,46 @@ Please interpret:
 3. Data quality notes based on coverage percentage
 4. Suggested downstream analyses given this embedding profile"""
 
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-    }
+    messages = [{"role": "user", "content": prompt}]
 
-    try:
-        resp = httpx.post(f"{host}/api/chat", json=payload, timeout=120)
-        resp.raise_for_status()
-        return resp.json()["message"]["content"]
-    except httpx.ConnectError:
-        return f"[Ollama not reachable at {host} — run 'ollama serve' and ensure model '{model}' is pulled]"
-    except Exception as e:
-        return f"[Ollama error: {e}]"
+    # ── Ollama Cloud: OpenAI-compatible endpoint ──────────────────────────────
+    if api_key:
+        url = f"{host.rstrip('/')}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        try:
+            resp = httpx.post(url, json=payload, headers=headers, timeout=120)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+        except httpx.HTTPStatusError as e:
+            return f"[Ollama Cloud HTTP {e.response.status_code}: {e.response.text[:300]}]"
+        except Exception as e:
+            return f"[Ollama Cloud error: {e}]"
+
+    # ── Local Ollama: native /api/chat ────────────────────────────────────────
+    else:
+        url = f"{host.rstrip('/')}/api/chat"
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        try:
+            resp = httpx.post(url, json=payload, timeout=120)
+            resp.raise_for_status()
+            return resp.json()["message"]["content"]
+        except httpx.ConnectError:
+            return f"[Ollama not reachable at {host} — run 'ollama serve' and ensure model '{model}' is pulled]"
+        except Exception as e:
+            return f"[Ollama local error: {e}]"
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +494,8 @@ def run_pipeline(
     aoi: AOI,
     year: int,
     ollama_model: str = "llama3.2",
-    ollama_host: str = "http://localhost:11434",
+    ollama_host: str = "https://api.ollama.ai",
+    ollama_api_key: Optional[str] = None,
     compare_year: Optional[int] = None,
     task: str = "interpret",
 ) -> dict:
@@ -552,6 +590,7 @@ def run_pipeline(
         change_summary=summary_t2,
         model=ollama_model,
         host=ollama_host,
+        api_key=ollama_api_key,
         task=task if compare_year is None else "change",
     )
     results["llm_response"] = llm_response
