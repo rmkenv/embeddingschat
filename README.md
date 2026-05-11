@@ -1,9 +1,9 @@
 # 🛰️ AEF Explorer
 
-**AlphaEarth Foundations Embeddings → Local Ollama LLM · No GEE Required**
+**AlphaEarth Foundations Embeddings → Ollama Cloud · No GEE Required**
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/aef-explorer/blob/main/AEF_Explorer_Colab.ipynb)
 [![CI](https://github.com/YOUR_USERNAME/aef-explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/aef-explorer/actions)
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://YOUR_APP.streamlit.app)
 
 > **Attribution**: *"The AlphaEarth Foundations Satellite Embedding dataset is produced by Google and Google DeepMind."*  
 > License: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
@@ -136,21 +136,35 @@ Source Cooperative tiles use positive y-resolution (bottom-left origin). rasteri
 
 ---
 
-## Ollama Models
+## Ollama Setup
 
-Any model pulled locally works. Recommended:
+### Option A — Ollama Cloud (recommended for Streamlit Community Cloud)
+
+1. Get an API key at [ollama.com](https://ollama.com)
+2. In the app sidebar: check **"Use Ollama Cloud API"** and paste your key
+3. For Streamlit Community Cloud: add the secret in the app's Secrets dashboard:
+   ```
+   OLLAMA_API_KEY = "your-key-here"
+   ```
+   The app auto-loads it on startup — no manual entry needed.
+
+Uses the OpenAI-compatible `/v1/chat/completions` endpoint with Bearer auth. Any model on Ollama Cloud works: `llama3.2`, `llama3.1`, `mistral`, `qwen2.5:14b`, etc.
+
+### Option B — Local Ollama
 
 ```bash
-ollama pull llama3.2        # fast, good reasoning
-ollama pull llama3.1        # larger context
-ollama pull mistral         # alternative
-ollama pull qwen2.5:14b     # strong for analytical tasks
+ollama pull llama3.2
+ollama serve   # listens on localhost:11434
 ```
 
-For remote Ollama (required for Streamlit Cloud deployment):
-- [Fly.io + Ollama](https://fly.io/docs/machine/guides/ollama/)
-- [Modal + Ollama](https://modal.com/docs/examples/ollama)
-- Any VPS with `ollama serve --host 0.0.0.0`
+Uncheck "Use Ollama Cloud API" in the sidebar. Works for local dev; not compatible with Streamlit Community Cloud (serverless).
+
+### Local secrets setup
+
+```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# Add your Ollama Cloud key — never commit this file
+```
 
 ---
 
